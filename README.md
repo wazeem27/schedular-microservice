@@ -26,9 +26,9 @@ The recommended method uses Docker Compose, which mirrors the production environ
 
 ### Step 1: Configure Environment
 
-The project requires a basic `.env` file for database and broker configuration.
+No need to configre anything unless want to change something, i have already defined a .env file with required env variables
+make sure port 6379 and 5432 are free for this app to use for database and broker purpose
 
-* Ensure a `.env` file exists in the project root directory (mirrored from `.env.example`).
 * If you need to update variables, edit the `.env` file.
 
 ### Step 2: Build and Launch Services
