@@ -1,45 +1,81 @@
-# Scheduler Microservice (FastAPI, Celery, PostgreSQL, Redis)
+# Scheduler Microservice Setup Guide
 
-This project is scheular microservice: implements a scalable microservice for periodic job scheduling. It uses a **Scheduler** built on top of Celery (the distributed task queue).
+This document provides step-by-step instructions for setting up and running the Scheduler Microservice project using Docker Compose, followed by an alternative local setup guide.
 
-## Features
+---
 
-1.  **Microservices-based:** Separate containers for API (**FastAPI**), Worker (**Celery Worker**), and Scheduler (**Custom Scheudling **).
-2.  **Custom Scheduling:** Celery Beat runs a single, recurring task (`app.tasks.scheduler.check_and_run_jobs`) every 10 seconds. This custom task checks the PostgreSQL DB for jobs where `next_run_at <= NOW()` and launches them dynamically to the workers.
-3.  **Tools Used:** FastAPI, Celery, PostgreSQL (DB), Redis (Broker).
+## 🚀 1. Project Overview
 
-## Setup and Installation (Docker Compose)
+This project implements a scalable microservice for periodic job scheduling using a decoupled, microservices-based architecture.
 
-The recommended way to run this project is using Docker Compose, which mirrors the production environment.
+* **API:** FastAPI (Handles job creation and retrieval)
+* **Task Queue:** Celery
+* **Database:** PostgreSQL (Stores job configurations, run history)
+* **Message Broker:** Redis
+* **Custom Scheduling Logic:** Celery Beat executes a periodic task (`app.tasks.scheduler.check_and_run_jobs`) that polls the PostgreSQL database to identify and launch jobs that are due (`next_run_at <= NOW()`).
+
+---
+
+## 🛠️ 2. Setup and Installation (Docker Compose - Recommended)
+
+The recommended method uses Docker Compose, which mirrors the production environment by running separate containers for the API, Worker, Beat, Database, and Redis.
 
 ### Prerequisites
 
-* Docker and Docker Compose installed.
-* Python 3.12 (for local development/setup).
+* Docker and Docker Compose installed on your system.
 
-### 1. Configure Environment
+### Step 1: Configure Environment
 
-The basic .env is already stored in the root file: So you can just run docker compose up --build to run the system that will bring each services up and running
+The project requires a basic `.env` file for database and broker configuration.
 
+* Ensure a `.env` file exists in the project root directory (mirrored from `.env.example`).
+* If you need to update variables, edit the `.env` file.
+
+### Step 2: Build and Launch Services
+
+Run the following command from the project root directory. The services are configured with health checks and dependencies to ensure correct startup order.
+
+```bash
 docker compose up --build -d
-3. Verify Running Services
-Check that all 5 containers are running healthily:
+```
 
-##### Testing and Verification
-1. Access the API
-The FastAPI interface is available on your host machine via the exposed port:
+### Step 3: Verify Running Services
 
-Swagger Docs: http://localhost:8000/docs
+Check the status of all five containers. They should all be in a healthy state:
 
-2. Create a Scheduled Job
-Use the Swagger UI (/docs) to POST a new job to /api/v1/jobs.
+```bash
+docker compose ps
+```
 
-Example: Schedule a task to append a string into a file
+You should see:
 
-JSON
+* `scheduler_api`
+* `scheduler_worker`
+* `scheduler_beat`
+* `postgres_db`
+* `redis_broker`
 
+all running.
+
+---
+
+## ✅ 3. Testing and Verification
+
+### Step 1: Access the API Documentation
+
+The FastAPI interface exposes the Swagger UI for testing the job creation endpoint.
+
+* **Swagger Docs URL:** [http://localhost:8000/docs](http://localhost:8000/docs)
+
+### Step 2: Create a Scheduled Job
+
+Use the Swagger UI to execute a POST request to the `/v1/jobs` endpoint to create your first scheduled job.
+
+**Example Payload:** Schedule the `log_heartbeat` task to run every minute.
+
+```json
 {
-  "name": "Heartbeat-File12-Logge111r",
+  "name": "Heartbeat-File-Logger",
   "task_name": "app.tasks.jobs.log_heartbeat",
   "schedule_interval": "interval",
   "schedule_params": {
@@ -52,39 +88,85 @@ JSON
     "keyword": {}
   }
 }
-3. Monitor Execution Logs
-Watch the combined logs to confirm the custom scheduler is working: or even cna tail -f <filename> (inside the app dir in worker container)
+```
 
-Bash
+### Step 3: Monitor Execution Logs
 
+Monitor the combined container logs in real-time to confirm that the custom scheduler and worker are functioning correctly.
+
+```bash
 docker compose logs -f
-Beat Logs: Look for the recurring log every 10 seconds: "Custom Scheduler check initiated."
+```
 
-Worker Logs: When the job's next_run_at arrives, the scheduler_worker log will show the task execution: "Task <ID>: Starting number crunching for job ID 1..."
+* **Beat Logs:** Look for the log indicating the periodic check (e.g., `"Custom Scheduler check initiated."` every 10 seconds).
+* **Worker Logs:** When the job's calculated `next_run_at` is reached, the `scheduler_worker` will log the task execution (e.g., `"Task <ID>: Successfully logged heartbeat to..."`).
+* **File Verification:** To confirm the file was written, you can exec into the worker container:
 
-If wanted to run  locally (Alternative):
-Create a virtual env and pip install the requirement
-Then follow the below Makefile targets to run it individually
+```bash
+docker exec -it scheduler_worker /bin/bash
+cat my_scheduler_log.txt 
+exit
+```
 
-Start dependencies and initialize the DB:
+---
 
-Bash
+## 🖥️ 4. Local Setup (Alternative)
 
+If you prefer to run the API, Worker, and Beat directly on your host machine for debugging purposes:
+
+### Prerequisites (Local)
+
+* Python 3.12 installed
+* PostgreSQL and Redis running (handled by Docker Compose in Step 1 below)
+
+### Step 1: Prepare Dependencies and Environment
+
+Start only the dependent services (Database and Redis) and initialize the DB.
+
+```bash
+# Start PostgreSQL and Redis containers only
+docker compose up db redis -d
+
+# Initialize the DB (assuming 'make local-setup' runs migrations)
 make local-setup
-Run the services in separate terminals:
+```
 
-Bash
+### Step 2: Install Python Requirements
 
-# Terminal 1: FastAPI API
+Create and activate a virtual environment, then install all dependencies.
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+### Step 3: Run Services Individually
+
+Open three separate terminal windows and run the following Makefile targets:
+
+* **Terminal 1: FastAPI API**
+
+```bash
 make api
+```
 
-# Terminal 2: Celery Worker
+* **Terminal 2: Celery Worker**
+
+```bash
 make worker
+```
 
-# Terminal 3: Celery Beat (The Custom Scheduler)
+* **Terminal 3: Celery Beat (The Custom Scheduler)**
+
+```bash
 make beat
-Stop local dependencies:
+```
 
-Bash
+### Step 4: Stop Local Dependencies
 
+Once finished, stop the PostgreSQL and Redis containers started in Step 1.
+
+```bash
 make local-down
+```
