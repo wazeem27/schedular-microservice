@@ -1,0 +1,88 @@
+# ===== docker compose for running the entire system in containers =====
+version: '3.8'
+
+services:
+
+  scheduler_api:
+    build: .
+    image: scheduler-microservice:latest
+    container_name: scheduler_api
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./logs/api:/app/logs
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DB_HOST: db
+      REDIS_HOST: redis
+
+  scheduler_worker:
+    build: .
+    image: scheduler-microservice:latest
+    container_name: scheduler_worker
+    command: ["celery", "-A", "app.tasks", "worker", "-l", "INFO"]
+    volumes:
+      - ./logs/worker:/app/logs
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DB_HOST: db
+      REDIS_HOST: redis
+
+  scheduler_beat:
+    build: .
+    image: scheduler-microservice:latest
+    container_name: scheduler_beat
+    command: ["celery", "-A", "app.tasks", "beat", "-l", "INFO"]
+    volumes:
+      - ./logs/beat:/app/logs
+    env_file:
+      - .env
+
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DB_HOST: db
+      REDIS_HOST: redis
+
+  db:
+    image: postgres:14-alpine
+    container_name: postgres_db
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis_broker
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  postgres_data:
